@@ -1,14 +1,25 @@
 from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
-
+from flask_login import UserMixin, login_user, LoginManager, login_required, logout_user
 #criar uma instancia do Flask
 app = Flask(__name__)
+app.config['SECRET_KEY'] = "teste123"
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///ecommerce.db' #configurar o banco de dados
+
+login_manager = LoginManager()
 db = SQLAlchemy(app) #criar uma instancia do SQLAlchemy
+login_manager.init_app(app)
+login_manager.login_view = 'login'
 CORS(app) #habilitar CORS
 
 #modelagem de dados
+#usuario (id, username, password)
+class User(db.Model, UserMixin):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), nullable=False, unique= True)
+    password = db.Column(db.String(80), nullable=True)
+
 #Produto(id, nome, preco, descricao)
 class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -16,8 +27,31 @@ class Product(db.Model):
     price = db.Column(db.Float, nullable=False)
     description = db.Column(db.Text, nullable=True)
 
-#rotas
+#autenticacao
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
+#rotas usuarios
+@app.route('/login',  methods=['POST'])
+def login():
+    data = request.json
+    user = User.query.filter_by(username=data.get("username")).first()
+    if user and data.get("password") == user.password:
+        login_user(user)
+        return {'message': 'Logado com sucesso!'}
+    return {'message': 'Credenciais invalidas'}, 401
+
+@app.route('/logout',  methods=['POST'])
+@login_required
+def logout():
+    logout_user()
+    return {'message': 'Logout com sucesso!'}
+    
+
+#rotas produtos
 @app.route('/api/products/add', methods=['POST'])
+@login_required
 def add_product():
     #lógica para adicionar um produto ao banco de dados
     data = request.json
@@ -29,6 +63,7 @@ def add_product():
     return jsonify({'message': 'Dados inválidos!'}), 400
 
 @app.route('/api/products/delete/<int:product_id>', methods=['DELETE'])
+@login_required
 def delete_product(product_id):
     #lógica para deletar um produto do banco de dados
     product = Product.query.get(product_id)
@@ -52,6 +87,7 @@ def get_product_details(product_id):
     return jsonify({'message': 'Produto não encontrado!'}), 404
 
 @app.route('/api/products/update/<int:product_id>', methods=['PUT'])
+@login_required
 def update_product(product_id):
     #lógica para atualizar os detalhes de um produto
     product = Product.query.get(product_id)
